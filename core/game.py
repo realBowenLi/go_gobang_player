@@ -23,6 +23,7 @@ class Game(ABC):
         self.resigned_player: Optional[Player] = None
         self.history: List[Dict[str, Any]] = []  # 历史记录（用于悔棋）
         self.last_move: Optional[Position] = None
+        self.moves_log: List[Dict[str, Any]] = []  # 录像
     
     def make_move(self, position: Optional[Position] = None) -> bool:
         """
@@ -39,7 +40,9 @@ class Game(ABC):
                 raise InvalidMoveException("此游戏不支持虚着")
             # 保存当前状态（用于悔棋）
             self._save_state()
-            return self._handle_pass()
+            self._record_move(self.current_player, None)
+            result = self._handle_pass()
+            return result
         
         # 检查落子合法性
         if not self.board.is_valid_move(position, self.current_player.color):
@@ -51,6 +54,7 @@ class Game(ABC):
         # 执行落子
         captured = self.board.place_stone(position, self.current_player.color)
         self.last_move = position
+        self._record_move(self.current_player, position)
         
         # 检查游戏是否结束
         if self._check_win_condition(position):
@@ -75,6 +79,25 @@ class Game(ABC):
             'last_move': (self.last_move.row, self.last_move.col) if self.last_move else None
         }
         self.history.append(state)
+
+    def _record_move(self, player: Player, position: Optional[Position]):
+        """记录录像轨迹"""
+        entry = {
+            'player_name': player.name,
+            'color': player.color.value,
+            'position': (position.row, position.col) if position else None
+        }
+        self.moves_log.append(entry)
+
+    def _safe_profile(self, player: Player) -> dict:
+        profile = getattr(player, "profile", {}) or {}
+        return {
+            "username": profile.get("username"),
+            "stats": profile.get("stats"),
+            "is_guest": profile.get("is_guest", False),
+            "is_ai": profile.get("is_ai", False),
+            "ai_level": profile.get("ai_level"),
+        }
     
     def undo(self):
         """悔棋一步"""
@@ -102,6 +125,9 @@ class Game(ABC):
                 self.last_move = None
         else:
             self.last_move = None
+
+        if self.moves_log:
+            self.moves_log.pop()
         
         # 如果游戏已结束，恢复为未结束状态
         if self.game_over:
@@ -167,9 +193,12 @@ class Game(ABC):
             'player2_color': self.player2.color.value,
             'player1_name': self.player1.name,
             'player2_name': self.player2.name,
+            'player1_profile': self._safe_profile(self.player1),
+            'player2_profile': self._safe_profile(self.player2),
             'game_over': self.game_over,
             'winner_color': self.winner.color.value if self.winner else None,
-            'history': serialized_history
+            'history': serialized_history,
+            'moves_log': self.moves_log
         }
     
     def load_state_dict(self, state: Dict[str, Any]):
@@ -194,6 +223,14 @@ class Game(ABC):
                 'last_move': hist_state.get('last_move')
             }
             self.history.append(restored_state)
+
+        # 恢复录像
+        self.moves_log = state.get('moves_log', [])
+
+        if 'player1_profile' in state:
+            self.player1.profile = state['player1_profile']
+        if 'player2_profile' in state:
+            self.player2.profile = state['player2_profile']
         
         if state.get('winner_color'):
             winner_color = Stone(state['winner_color'])

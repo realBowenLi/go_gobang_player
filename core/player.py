@@ -9,11 +9,12 @@ from .position import Position
 class Player(ABC):
     """玩家抽象基类"""
     
-    def __init__(self, color: Stone, name: str):
+    def __init__(self, color: Stone, name: str, profile: dict = None):
         if color == Stone.EMPTY:
             raise ValueError("Player color cannot be EMPTY")
         self.color = color
         self.name = name
+        self.profile = profile or {}
     
     @abstractmethod
     def make_move(self, game) -> Position:
